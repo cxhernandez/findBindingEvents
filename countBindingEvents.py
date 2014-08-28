@@ -128,7 +128,7 @@ def create_features(ref, prot, lig, d):
     set1 = [ref.topology.atom(i).residue.index for i in prot]
     set2 = [ref.topology.atom(i).residue.index for i in lig]
     contacts = md.compute_contacts(ref,contacts=list(itertools.product(set1,set2)))
-    atom_set = contacts[1][np.where(contacts[0]<d),:]
+    atom_set = contacts[1][np.where(contacts[0]<d)[1],:]
     return atom_set
    
 def calculate_metrics(traj, features, d):
@@ -143,11 +143,11 @@ def main(trajectories, ref, prot, lig, stride, d, c):
         with timing('Finding binding events...'):
             traj = md.load(trajectory, top = ref, stride = stride)
             traj.superpose(ref, atom_indices = prot)
-            h  =  create_metrics(traj, features, d)
+            h  =  calculate_metrics(traj, features, d)
             q, m1, m2, tau = findEvent(h)
-            if (c < q)*(m2 >= features.shape)*(m1 < features.shape)*(tau>0.0):
+            if (c < q)*(m2 >= features.shape[0])*(m1 < features.shape[0])*(tau>0.0):
                 bind += 1
-            elif (-c > q)*(m1 >= features.shape)*(m2 < features.shape)*(tau>0.0):
+            elif (-c > q)*(m1 >= features.shape[0])*(m2 < features.shape[0])*(tau>0.0):
                 unbind += 1
     
     COMM.Barrier()
