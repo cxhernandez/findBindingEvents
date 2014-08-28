@@ -123,7 +123,7 @@ def findEvent(metric, steps = 10000, burn=0.1, thin=1):
     mu2_samples = mcmc.trace('u2')[:]
     tau_samples = mcmc.trace('tau')[:]
     
-    sig, m1, m2, tau = (np.mean(mu1_samples)-np.mean(mu2_samples))/np.sqrt(np.var(mu1_samples)+np.var(mu2_samples) + 1E-5), np.median(mu1_samples), np.median(mu2_samples), np.median(tau)
+    sig, m1, m2, tau = (np.mean(mu2_samples)-np.mean(mu1_samples))/np.sqrt(np.var(mu1_samples)+np.var(mu2_samples) + 1E-5), np.median(mu1_samples), np.median(mu2_samples), np.median(tau)
     
     return sig, m1, m2, tau
     
@@ -148,9 +148,9 @@ def main(trajectories, ref, prot, lig, stride, d, c):
             traj.superpose(ref, atom_indices = prot)
             h  =  calculate_metrics(traj, features, d)
             q, m1, m2, tau = findEvent(h)
-            if (c < q)*(m2 >= features.shape[0])*(m1 < features.shape[0])*(tau>0.0):
+            if (c < q)*(tau>0.0):
                 bind += 1
-            elif (-c > q)*(m1 >= features.shape[0])*(m2 < features.shape[0])*(tau>0.0):
+            elif (-c > q)*(tau>0.0):
                 unbind += 1
     
     COMM.Barrier()
