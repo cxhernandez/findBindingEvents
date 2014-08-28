@@ -96,7 +96,10 @@ def parse_cmdln():
     
 
 def init_gamma_parms(r):
-    a = 1/np.mean(r)
+    if r.mean() > 0.0:
+        a = 1/np.mean(r)
+    else:
+        a = np.finfo('f').max
     return a
 
 def findEvent(metric, steps = 10000, burn=0.1, thin=1):
