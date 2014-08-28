@@ -88,7 +88,7 @@ def parse_cmdln():
     parser.add_argument('-s', '--stride', dest='stride', help='Stride', default=10)
     parser.add_argument('-p', '--protein', dest='prot', help='Protein indices', default=None)
     parser.add_argument('-l', '--ligand', dest='lig', help='Ligand indices', default=None)
-    parser.add_argument('-d', '--cutoff', dest='d', help='RMSD cutoff', default=0.45)
+    parser.add_argument('-d', '--cutoff', dest='d', help='RMSD cutoff', default=0.5)
     parser.add_argument('-c', '--significance', dest='c', help='Signficance cutoff', default=5.0)
     #parser.add_argument('-i', '--idx', dest='idx', help='Residues to compare in bound pose', default=None)
     args = parser.parse_args()
@@ -96,22 +96,21 @@ def parse_cmdln():
     
 
 def init_gamma_parms(r):
-    b = np.std(r)/np.mean(r)
-    a = b*np.mean(r)
-    return a,b
+    a = 1/np.mean(r)
+    return a
 
-def findEvent(feat, steps = 10000, burn=0.1, thin=1):
-    a,b = init_gamma_parms(feat)
-    mu1, mu2, tau, p = pm.Gamma('u1',a,b), pm.Gamma('u2',a,b), pm.DiscreteUniform("tau", lower=0, upper=feat.shape[0]), pm.Gamma('precision', alpha=0.1, beta=0.1)
+def findEvent(metric, steps = 10000, burn=0.1, thin=1):
+    a = init_gamma_parms(metric)
+    mu1, mu2, tau = pm.Exponential('u1',a), pm.Exponential('u2',a), pm.DiscreteUniform("tau", lower=0, upper=metric.shape[0])
     
     @pm.deterministic
     def params(a1=mu1, a2=mu2,tau=tau):
-        out = np.zeros(feat.shape[0])
+        out = np.zeros(metric.shape[0])
         out[:tau] = a1  
         out[tau:] = a2 
         return out
     
-    obs = pm.Normal("obs",params,p,value=feat,observed=True)
+    obs = pm.Poisson("obs",params,value=metric,observed=True)
     model = pm.Model([obs,mu1,mu2,tau])
     
     mcmc = pm.MCMC(model)
@@ -123,27 +122,31 @@ def findEvent(feat, steps = 10000, burn=0.1, thin=1):
     
     sig = (np.mean(mu1_samples)-np.mean(mu2_samples))/np.sqrt(np.var(mu1_samples)+np.var(mu2_samples) + 1E-5)
     
-    return sig
+    return sig, np.median(mu1_samples), np.median(mu2_samples)
     
-def create_metrics(traj, ref, prot, lig, min_val=20, max_val=80):
-    r = rmsd(traj.xyz, ref.xyz, lig)
-    atom_set = list(itertools.product(prot, lig))
-    l = np.median(md.compute_distances(traj, atom_pairs=atom_set), axis=1)
-    h = r**2 + l**2
-    return h, np.percentile(r, min_val), np.percentile(r, max_val)
+def create_features(ref, prot, lig, d):
+    contacts = md.compute_contacts(ref,contacts=list(itertools.product([ref.topology.atom(i).residue.index for i in prot],[ref.topology.atom(i).residue.index for i in lig]))
+    atom_set = contacts[1][np.where(contacts[0]<d),:]
+    return atom_set
+   
+def calculate_metrics(traj, features, d):
+    contacts = md.compute_contacts(traj, contacts = features)
+    h = np.sum(contacts[0] < .5, axis=1)
+    return h
     
 def main(trajectories, topology, prot, lig, idx, stride, d, c):
     bind = unbind = 0
     ref = topology.atom_slice(atom_indices = idx, inplace=False)
+    features = create_features(ref, prot, lig, d)
     for trajectory in trajectories:
         with timing('Finding binding events...'):
             traj = md.load(trajectory, top = topology, stride = stride, atom_indices = idx)
             traj.superpose(ref, atom_indices = prot)
-            h, rmin, rmax =  create_metrics(traj, ref, prot, lig)
+            h, m1, m2  =  create_metrics(traj, features, d)
             q = findEvent(h)
-            if (c < q)*(d>rmin)*(d<rmax):
+            if (c < q)*(m2 >= features.shape)*(m1 < features.shape):
                 bind += 1
-            elif (-c > q)*(d>rmin)*(d<rmax):
+            elif (-c > q)*(m1 >= features.shape)*(m2 < features.shape):
                 unbind += 1
     
     COMM.Barrier()
