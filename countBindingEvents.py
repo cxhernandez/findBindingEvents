@@ -120,12 +120,12 @@ def findEvent(metric, steps = 10000, burn=0.1, thin=1):
     mu2_samples = mcmc.trace('u2')[:]
     tau_samples = mcmc.trace('tau')[:]
     
-    sig = (np.mean(mu1_samples)-np.mean(mu2_samples))/np.sqrt(np.var(mu1_samples)+np.var(mu2_samples) + 1E-5)
+    sig, m1, m2, tau = (np.mean(mu1_samples)-np.mean(mu2_samples))/np.sqrt(np.var(mu1_samples)+np.var(mu2_samples) + 1E-5), np.median(mu1_samples), np.median(mu2_samples), np.median(tau)
     
-    return sig, np.median(mu1_samples), np.median(mu2_samples)
+    return sig, m1, m2, tau
     
 def create_features(ref, prot, lig, d):
-    contacts = md.compute_contacts(ref,contacts=list(itertools.product([ref.topology.atom(i).residue.index for i in prot],[ref.topology.atom(i).residue.index for i in lig]))
+    contacts = md.compute_contacts(ref,contacts=list(itertools.product([ref.topology.atom(i).residue.index for i in prot],[ref.topology.atom(i).residue.index for i in lig])))
     atom_set = contacts[1][np.where(contacts[0]<d),:]
     return atom_set
    
@@ -142,11 +142,11 @@ def main(trajectories, topology, prot, lig, idx, stride, d, c):
         with timing('Finding binding events...'):
             traj = md.load(trajectory, top = topology, stride = stride, atom_indices = idx)
             traj.superpose(ref, atom_indices = prot)
-            h, m1, m2  =  create_metrics(traj, features, d)
-            q = findEvent(h)
-            if (c < q)*(m2 >= features.shape)*(m1 < features.shape):
+            h  =  create_metrics(traj, features, d)
+            q, m1, m2, tau = findEvent(h)
+            if (c < q)*(m2 >= features.shape)*(m1 < features.shape)*(tau>0.0):
                 bind += 1
-            elif (-c > q)*(m1 >= features.shape)*(m2 < features.shape):
+            elif (-c > q)*(m1 >= features.shape)*(m2 < features.shape)*(tau>0.0):
                 unbind += 1
     
     COMM.Barrier()
