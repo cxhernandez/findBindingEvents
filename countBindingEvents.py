@@ -125,7 +125,9 @@ def findEvent(metric, steps = 10000, burn=0.1, thin=1):
     return sig, m1, m2, tau
     
 def create_features(ref, prot, lig, d):
-    contacts = md.compute_contacts(ref,contacts=list(itertools.product([ref.topology.atom(i).residue.index for i in prot],[ref.topology.atom(i).residue.index for i in lig])))
+    set1 = [ref.topology.atom(i).residue.index for i in prot]
+    set2 = [ref.topology.atom(i).residue.index for i in lig]
+    contacts = md.compute_contacts(ref,contacts=list(itertools.product(prot,lig)))
     atom_set = contacts[1][np.where(contacts[0]<d),:]
     return atom_set
    
@@ -134,13 +136,12 @@ def calculate_metrics(traj, features, d):
     h = np.sum(contacts[0] < .5, axis=1)
     return h
     
-def main(trajectories, topology, prot, lig, idx, stride, d, c):
+def main(trajectories, ref, prot, lig, stride, d, c):
     bind = unbind = 0
-    ref = topology.atom_slice(atom_indices = idx, inplace=False)
     features = create_features(ref, prot, lig, d)
     for trajectory in trajectories:
         with timing('Finding binding events...'):
-            traj = md.load(trajectory, top = topology, stride = stride, atom_indices = idx)
+            traj = md.load(trajectory, top = ref, stride = stride)
             traj.superpose(ref, atom_indices = prot)
             h  =  create_metrics(traj, features, d)
             q, m1, m2, tau = findEvent(h)
@@ -182,18 +183,18 @@ if __name__ == "__main__":
         trajectories = [trajectories[i::SIZE] for i in range(SIZE)]
         prot = np.loadtxt(options.prot, dtype=int)
         lig = np.loadtxt(options.lig, dtype=int)
-        idx = np.hstack((prot,lig))
-        prot = np.arange(0,len(prot))
-        lig = np.arange(len(prot),len(prot)+len(lig))
+        #idx = np.hstack((prot,lig))
+        #prot = np.arange(len(prot))
+        #lig = np.arange(len(prot),len(idx))
     else:
-        trajectories = lig = idx = prot = None
+        trajectories = lig = prot = None
         
     
     trajectories = COMM.scatter(trajectories, root=0)
     prot = COMM.bcast(prot, root=0)
     lig = COMM.bcast(lig, root=0)
-    idx = COMM.bcast(idx, root=0)
+    #idx = COMM.bcast(idx, root=0)
     
     printM('Starting...')
     
-    main(trajectories, topology, prot, lig, idx, int(options.stride), options.d, options.c)
+    main(trajectories, topology, prot, lig, int(options.stride), options.d, options.c)
