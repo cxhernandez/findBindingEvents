@@ -127,7 +127,7 @@ def findEvent(metric, steps = 10000, burn=0.1, thin=1):
 def create_features(ref, prot, lig, d):
     set1 = [ref.topology.atom(i).residue.index for i in prot]
     set2 = [ref.topology.atom(i).residue.index for i in lig]
-    contacts = md.compute_contacts(ref,contacts=list(itertools.product(prot,lig)))
+    contacts = md.compute_contacts(ref,contacts=list(itertools.product(set1,set2)))
     atom_set = contacts[1][np.where(contacts[0]<d),:]
     return atom_set
    
